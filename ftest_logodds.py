@@ -15,6 +15,7 @@ Three levels of values are returned: 1 if positive associated, 0 if not associat
 ftest_mix: (BH corrected, obsolete version:not BH corrected)
 Mixed levels are returned: continuous values if positive associated, 0 if not associated, negative continuous if negative associated.
 
+logreg_corr , logreg_uncorr, logreg_mix are continuous analog of ftest_corr,ftest_uncorr, ftest_mix.
 
 Input parameters:
 data: ndarray (binary)
@@ -35,6 +36,8 @@ response:1-d array of response 0,1
 import scipy.stats as stats
 import numpy as np
 import statsmodels.stats.multitest as smt
+import statsmodels.discrete.discrete_model as sm
+import statsmodels.tools.tools as smtt
 
 
 def ftest_corr(data,labels,features):
@@ -117,7 +120,79 @@ def ftest_mix(data,labels,features):
     
     return feat_table,lor_table
 
+######Now we calculate the continuous analog by logistic regression #####################################################
 
+def logreg_corr(data,labels,features):
+    data_label = np.append(data,labels,axis=1)
+    # create log odds ratio and pval table
+    lor_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    pval_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    for i in range(data_label.shape[1]-1):
+        for j in range(np.unique(labels).shape[0]):
+            # extract column features
+            feat = smtt.add_constant(data_label[:,i],prepend=True, has_constant='skip')
+            # set response vector
+            response = (labels == j)*1
+            model = sm.Logit(response, feat).fit()
+            # obtain pvalue from the model
+            pval_table[j,i] = model.pvalues[1]
+            # obtain log odds ratio from logit * 2
+            lor_table[j,i] = model.params[1]
+    # create pval_array for BH procedure        
+    pval_array = pval_table.reshape(np.unique(labels).shape[0]*data.shape[1],)
+    # apply hochberg benjamini correction at 0.99 confidence level
+    test_array,__,__,__=smt.multipletests(pval_array, alpha=0.01, method='fdr_bh', is_sorted=False, returnsorted=False)
+    test_table = (test_array*1).reshape(np.unique(labels).shape[0],data.shape[1])
+    # select features that are significant
+    sel_feat = features[test_table.sum(axis=0) !=0]
+    sel_or_data = lor_table[:,np.in1d(features,sel_feat,assume_unique=True)]  
+    # return selected features and log odds ratio which are significant
+    return sel_feat, sel_or_data
+
+
+def logreg_uncorr(data,labels,features):
+    data_label = np.append(data,labels,axis=1)
+    lor_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    feat_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    pval_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    for i in range(data_label.shape[1]-1):
+        for j in range(np.unique(labels).shape[0]):
+            feat = smtt.add_constant(data_label[:,i],prepend=True, has_constant='skip')
+            response = (labels == j)*1
+            model = sm.Logit(response, feat).fit()
+            pval_table[j,i] = model.pvalues[1]
+            lor_table[j,i] = model.params[1]
+    pval_array = pval_table.reshape(np.unique(labels).shape[0]*data.shape[1],)
+    test_array,__,__,__= smt.multipletests(pval_array, alpha=0.01, method='fdr_bh', is_sorted=False, returnsorted=False)
+    test_table = (test_array*1).reshape(np.unique(labels).shape[0],data.shape[1])
+    # the above are similar to corr, the following select features significantly positively associated and set to 1;
+    # negatively associated and set to -1, not significant set to 0. use feat_table for 1,0,-1 matrix.
+    lor_table_pos,lor_table_neg = (lor_table > 0)*1 , (lor_table < 0)*(-1)
+    lor_table_new = lor_table_pos + lor_table_neg
+    feat_table = lor_table_new * test_table
+    return feat_table,lor_table
+
+def logreg_mix(data,labels,features):
+    data_label = np.append(data,labels,axis=1)
+    lor_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    feat_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    pval_table = np.zeros((np.unique(labels).shape[0],data.shape[1]))
+    for i in range(data_label.shape[1]-1):
+        for j in range(np.unique(labels).shape[0]):
+            feat = smtt.add_constant(data_label[:,i],prepend=True, has_constant='skip')
+            response = (labels == j)*1
+            model = sm.Logit(response, feat).fit()
+            pval_table[j,i] = model.pvalues[1]
+            lor_table[j,i] = model.params[1]      
+    pval_array = pval_table.reshape(np.unique(labels).shape[0]*data.shape[1],)
+    test_array,__,__,__=smt.multipletests(pval_array, alpha=0.01, method='fdr_bh', is_sorted=False, returnsorted=False)
+    test_table = (test_array*1).reshape(np.unique(labels).shape[0],data.shape[1])
+    # the above are similar to corr and uncorr, the following select features significantly associated whether positively or negatively . Set not significant to be 0. Use feat_table for plotting.  
+    feat_table = lor_table * test_table 
+    
+    return feat_table,lor_table
+
+######fisher's exact for cluster and response #####################################################
 def restest(labels, response):
     lab_res = np.append(labels,response,axis=1)
     or_table = np.zeros(np.unique(labels).shape[0])
