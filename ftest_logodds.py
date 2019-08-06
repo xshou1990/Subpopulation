@@ -136,7 +136,7 @@ def logreg_corr(data,labels,features):
             model = sm.Logit(response, feat).fit()
             # obtain pvalue from the model
             pval_table[j,i] = model.pvalues[1]
-            # obtain log odds ratio from logit * 2
+            # obtain log odds ratio from cofficient beta1
             lor_table[j,i] = model.params[1]
     # create pval_array for BH procedure        
     pval_array = pval_table.reshape(np.unique(labels).shape[0]*data.shape[1],)
