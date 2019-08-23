@@ -32,9 +32,9 @@ from scipy.special import xlogy
 
 class binaryCadreModel(object):
     
-    def __init__(self, M=2, gamma=1., lambda_d=0.0001, lambda_W=0.1,
+    def __init__(self, M=2, gamma=10., lambda_d=0.0001, lambda_W=0.1,
                  alpha_d=0.9, alpha_W=0.01, Tmax=10000, record=100, 
-                 eta=2e-3, Nba=128, eps=1e-6,termination_metric='ROC_AUC'):
+                 eta=2e-3, Nba=128, eps=1e-4,termination_metric='ROC_AUC'):
         ## hyperparameters / structure
         self.M = M                # number of cadres
         self.gamma = gamma        # cadre assignment sharpness
