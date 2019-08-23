@@ -3,7 +3,8 @@
 """
 Created on Sun Jun 30 19:10:10 2019
 
-@original author : alexander new ; updated by Xiao Shou (implementation of SPARSE GROUP LASSO)
+@original author : alexander new ; 
+updated by Xiao Shou (implementation of SPARSE GROUP LASSO, Numerical Stable version with Soft Membership)
 
 """
 
@@ -23,16 +24,17 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import utility as u
+from metricsFunctions import optimalTau
 
 from itertools import product
-from sklearn.metrics import roc_auc_score, average_precision_score,accuracy_score
+from sklearn.metrics import roc_auc_score, average_precision_score,accuracy_score,f1_score
 from scipy.special import xlogy
 
 class binaryCadreModel(object):
     
-    def __init__(self, M=2, gamma=10., lambda_d=0.001, lambda_W=0.001,
-                 alpha_d=0.9, alpha_W=0.9, Tmax=10000, record=100, 
-                 eta=2e-3, Nba=64, eps=1e-3, termination_metric='ROC_AUC'):
+    def __init__(self, M=2, gamma=1., lambda_d=0.0001, lambda_W=0.1,
+                 alpha_d=0.9, alpha_W=0.01, Tmax=10000, record=100, 
+                 eta=2e-3, Nba=128, eps=1e-6,termination_metric='ROC_AUC'):
         ## hyperparameters / structure
         self.M = M                # number of cadres
         self.gamma = gamma        # cadre assignment sharpness
@@ -71,6 +73,8 @@ class binaryCadreModel(object):
         self.time = [] # times
         self.proportions = [] # cadre membership proportions during training
         self.termination_reason = None # why training stopped
+        
+        
     
     def get_params(self, deep=True):
         return {'M': self.M, 'gamma': self.gamma, 'lambda_d': self.lambda_d, 
@@ -137,35 +141,34 @@ class binaryCadreModel(object):
             d = tf.Variable(np.random.uniform(size=(Pcadre)), dtype=tf.float32, name='d')
         
         ## regression hyperplane weights parameter
-        #if 'W' in inits:
-        #    W = tf.Variable(inits['W'], dtype=tf.float32, name='W')
-        #else:
-        W = tf.Variable(np.random.normal(loc=0., scale=0.1, size=(Ppredict,self.M)), 
+        if inits is not None and 'W' in inits:
+            W = tf.Variable(inits['W'], dtype=tf.float32, name='W')
+        else:
+            W = tf.Variable(np.random.normal(loc=0., scale=0.1, size=(Ppredict,self.M)), 
                             dtype=tf.float32, name='W')
         ## regression hyperplane bias parameter
-        #if 'W0' in inits:
-        #W0 = tf.Variable(inits['W0'], dtype=tf.float32, name='W0')
-        #else:
-        W0 = tf.Variable(tf.zeros(shape=(self.M,), dtype=tf.float32), 
+        if inits is not None and 'W0' in inits:
+            W0 = tf.Variable(inits['W0'], dtype=tf.float32, name='W0')
+        else:
+            W0 = tf.Variable(tf.zeros(shape=(self.M,), dtype=tf.float32), 
                              dtype=tf.float32, name='W0')
     
         Xcadre = tf.placeholder(dtype=tf.float32, shape=(None,Pcadre), name='Xcadre')
         Xpredict = tf.placeholder(dtype=tf.float32, shape=(None,Ppredict), name='Xpredict')
         Y = tf.placeholder(dtype=tf.float32, shape=(None,1), name='Y')
         eta = tf.placeholder(dtype=tf.float32, shape=(), name='eta')
-        lambda_Ws = tf.placeholder(dtype=tf.float32, shape=(self.M,), name='lambda_Ws')
+
         
-        ## T[n,m] = ||x^n - c^m||^2_D
-        T = tf.einsum('npm,p->nm', 
+        ## T[n,m] = -gamma * ||x^n - c^m||^2_D
+        T = -self.gamma * tf.einsum('npm,p->nm', 
               tf.square(tf.map_fn(lambda x: tf.expand_dims(x,1) - C, Xcadre)), 
               d)
-                
+        
         ## G[n,m] = g_m(x^n)
         ##        = 1 / sum_m' exp(gamma(T[n,m] - T[n,m']))
         ## cadre-assignment scores
-        G = 1 / tf.map_fn(lambda t: 
-                      tf.reduce_sum(tf.exp(self.gamma*(tf.expand_dims(t,1) - 
-                                             tf.expand_dims(t,0))), axis=1), T, name='G')                 
+        G = tf.exp( T - tf.reduce_max(T, axis=1,keepdims=True) ) \
+                /tf.reduce_sum(tf.exp( T - tf.reduce_max(T, axis=1,keepdims=True) ),axis=1,keepdims=True)
 
         ## E[n,y,m] = e^m_y(x^n)
         ## cadre-wise prediction scores
@@ -181,15 +184,10 @@ class binaryCadreModel(object):
         
         ## regularization
         l2_d = self.lambda_d * (1 - self.alpha_d) * tf.reduce_sum(d**2)
-        #l2_W = self.lambda_W * (1 - self.alpha_W) * tf.reduce_sum(lambda_Ws * W**2)
-        #l2_W = self.lambda_W * (1 - self.alpha_W) * tf.reduce_sum(W**2)
         l1_d = self.lambda_d * self.alpha_d * tf.reduce_sum(tf.abs(d))
-        #l1_W = self.lambda_W * self.alpha_W * tf.reduce_sum(lambda_Ws * tf.abs(W))
         l1_W = self.lambda_W * self.alpha_W * tf.reduce_sum(tf.abs(W))
         l2_C = 1e-7 * tf.reduce_sum(C**2)
         l_GW = self.lambda_W *  (1 - self.alpha_W) * tf.reduce_sum(tf.norm(W,axis=1))
-        
-        
         
         ## loss that is fed into optimizer
         loss_opt = loss_score + l2_C + l2_d
@@ -202,13 +200,10 @@ class binaryCadreModel(object):
         #W_norm = tf.norm(W,axis=1)
         mask = tf.cast(tf.greater(tf.norm(W,axis=1), eta * self.lambda_W  * (1-self.alpha_W) * tf.ones_like(tf.norm(W,axis=1))),dtype=tf.float32) * (1-eta * self.lambda_W * (1-self.alpha_W)/(tf.norm(W,axis=1)+10e-8))
         thresh_GW = tf.assign(W, W * tf.tile(tf.reshape(mask,(-1,1)), [1,tf.shape(W)[1]]))
-        #thresh_W = tf.assign(W, tf.sign(W) * (tf.abs(W) - eta * self.lambda_W * lambda_Ws * self.alpha_W) * tf.cast(tf.abs(W) > eta * self.lambda_W * self.alpha_W, tf.float32))
-        #thresh_d = tf.assign(d, tf.maximum(0., tf.sign(d) * (tf.abs(d) - eta * self.lambda_d * self.alpha_d) * tf.cast(tf.abs(d) > eta * self.lambda_d * self.alpha_d, tf.float32)))
         thresh_W = tf.assign(W, tf.sign(W) * (tf.abs(W) - eta * self.lambda_W * self.alpha_W) * tf.cast(tf.abs(W) > eta * self.lambda_W * self.alpha_W, tf.float32))
         thresh_d = tf.assign(d, tf.maximum(0., tf.sign(d) * (tf.abs(d) - eta * self.lambda_d * self.alpha_d) * tf.cast(tf.abs(d) > eta * self.lambda_d * self.alpha_d, tf.float32)))
        
 
-        
         ####################
         ## learning model ##
         ####################
@@ -228,21 +223,22 @@ class binaryCadreModel(object):
             for t in range(self.Tmax):
                 inds = np.random.choice(Ntr, self.Nba, replace=False)
                 ## calculate adaptive regularization parameter
+
                 cadres = bstCd.eval(feed_dict={Xcadre: dataCadre[inds,:], Xpredict: dataPredict[inds,:]})
                 cadre_counts = np.zeros(self.M)
+
                 for m in range(self.M):
                     cadre_counts[m] = np.sum(cadres == m) + 1
                 cadre_counts = cadre_counts.sum() / cadre_counts
                 
+
                 ## take SGD step
                 sess.run(optimizer, feed_dict={Xcadre: dataCadre[inds,:],
                                                Xpredict: dataPredict[inds,:],
                                                Y: target_tr[inds,:],
                                               # lambda_Ws: cadre_counts,
                                                eta: self.eta / np.sqrt(t+1)})
-                ## take proximal gradient step
-                #sess.run([thresh_d, thresh_W], feed_dict={eta: self.eta / np.sqrt(t+1), lambda_Ws: cadre_counts})
-                
+     
                 #sequential proximal gradient
                 sess.run([thresh_W,thresh_d], feed_dict={eta: self.eta / np.sqrt(t+1)})
                 sess.run([mask,thresh_GW], feed_dict={eta: self.eta / np.sqrt(t+1)})
@@ -270,11 +266,14 @@ class binaryCadreModel(object):
                     for m in range(self.M):
                         cadre_counts[m] = np.sum(cadres == m) + 1
                     cadre_counts = cadre_counts / cadre_counts.sum()
-                    l, margin, cadres = sess.run([loss_full, F, bstCd], 
+                    
+                    
+                    l, margin, cadres= sess.run([loss_full, F, bstCd], 
                                                  feed_dict={Xcadre: dataCadre,
                                                             Xpredict: dataPredict,
-                                                            lambda_Ws: cadre_counts,
-                                                            Y: target_tr})
+                                                          Y: target_tr})
+
+                    
                     yhat = 0.5 * (np.sign(margin) + 1)
                     self.metrics['training']['loss'].append(l)
                     self.metrics['training']['accuracy'].append(np.mean(yhat == dataTarget))
@@ -283,8 +282,10 @@ class binaryCadreModel(object):
                     self.metrics['training']['PR_AUC'].append(average_precision_score(dataTarget,
                                                                                       margin))
                     self.proportions.append(pd.Series(cadres).value_counts().T)
+                    
                     self.proportions[-1] /= self.proportions[-1].sum()
-                        
+
+                    
                     if dataVa is not None:
                         cadres = bstCd.eval(feed_dict={Xcadre: dataCadreVa, Xpredict: dataPredictVa})
                         cadre_counts = np.zeros(self.M)
@@ -293,7 +294,7 @@ class binaryCadreModel(object):
                         cadre_counts = cadre_counts / cadre_counts.sum()
                         l, margin = sess.run([loss_full, F], feed_dict={Xcadre: dataCadreVa,
                                                                         Xpredict: dataPredictVa,
-                                                                        lambda_Ws: cadre_counts,
+                                                                    #    lambda_Ws: cadre_counts,
                                                                         Y: target_va})
                         yhat = 0.5 * (np.sign(margin) + 1)
                         self.metrics['validation']['loss'].append(l)
@@ -302,25 +303,29 @@ class binaryCadreModel(object):
                                                                                    margin))
                         self.metrics['validation']['PR_AUC'].append(average_precision_score(dataTargetVa,
                                                                                             margin))
-                    #if dataVa is not None:
-                     #   if len(self.time) > 1:
-                      #      last_metric = self.metrics['validation'][self.termination_metric][-1]
-                       #     second_last_metric = self.metrics['validation'][self.termination_metric][-2]
-                        #    if np.abs(last_metric - second_last_metric) < self.eps:
-                         #       self.termination_reason = 'lack of sufficient decrease in validation ' + self.termination_metric
-                          #      break
-                    #else:
-                      #  if len(self.time) > 1:
-                       #     last_metric = self.metrics['training'][self.termination_metric][-1]
-                        #    second_last_metric = self.metrics['training'][self.termination_metric][-2]
-                         #   if np.abs(last_metric - second_last_metric) < self.eps:
-                          #      self.termination_reason = 'lack of sufficient decrease in training ' + self.termination_metric
-                           #     break
-            #if self.termination_reason == None:
-            #    self.termination_reason = 'model took ' + str(self.Tmax) + ' SGD steps'
-            #if progress:
-            #    print('training has terminated because: ' + str(self.termination_reason))
-            self.C, self.d, self.W, self.W0 = C.eval(), d.eval(), W.eval(), W0.eval()
+                    if dataVa is not None:
+                        if len(self.time) > 1:
+                            last_metric = self.metrics['validation'][self.termination_metric][-1]
+                            second_last_metric = self.metrics['validation'][self.termination_metric][-2]
+                            if np.abs(last_metric - second_last_metric) < self.eps:
+                                self.termination_reason = 'lack of sufficient decrease in validation ' + self.termination_metric
+                                break
+                    else:
+                        if len(self.time) > 1:
+                            last_metric = self.metrics['training'][self.termination_metric][-1]
+                            second_last_metric = self.metrics['training'][self.termination_metric][-2]
+                            if np.abs(last_metric - second_last_metric) < self.eps:
+                                self.termination_reason = 'lack of sufficient decrease in training ' + self.termination_metric
+                                break
+            if self.termination_reason == None:
+                self.termination_reason = 'model took ' + str(self.Tmax) + ' SGD steps'
+            if progress:
+                print('training has terminated because: ' + str(self.termination_reason))
+            
+            
+            #adjustment = - np.log((1-event_proportions)/(event_proportions+1e-4)) - np.log(self.ybar/(1-self.ybar))
+            self.C, self.d, self.W ,self.W0 = C.eval(), d.eval(), W.eval(), W0.eval()
+            self.W0 = self.W0  # + adjustment
             self.C = pd.DataFrame(self.C, index=self.cadreFts)
             self.d = pd.Series(self.d, index=self.cadreFts)
             self.W = pd.DataFrame(self.W, index=self.predictFts)
@@ -330,6 +335,7 @@ class binaryCadreModel(object):
             if dataVa is not None:
                 self.metrics['validation'] = pd.DataFrame(self.metrics['validation'])
             self.proportions = pd.concat(self.proportions, axis=1).T
+
             
         return self
     
@@ -374,7 +380,6 @@ class binaryCadreModel(object):
         error_terms = tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=F)
         loss_score = tf.reduce_mean(error_terms)
         l2_d = self.lambda_d * (1 - self.alpha_d) * tf.reduce_sum(d**2)
-        #l2_W = self.lambda_W * (1 - self.alpha_W) * tf.reduce_sum(W**2)
         l1_d = self.lambda_d * self.alpha_d * tf.reduce_sum(tf.abs(d))
         l1_W = self.lambda_W * self.alpha_W * tf.reduce_sum(tf.abs(W))
         l2_C = 1e-7 * tf.reduce_sum(C**2)
@@ -423,19 +428,31 @@ class binaryCadreModel(object):
         Lnew = self.predictClass(Dnew)
         return np.mean(target == Lnew)
     
-    def scoreMetrics(self, Dnew):
+    def scoreMetrics(self,train, Dnew):
         """Returns goodness-of-fit metrics for new data as pd.DataFrame"""
-        target = Dnew.loc[:,[self.targetCol]].values        
+        target = Dnew.loc[:,[self.targetCol]].values    
+        Ftr, __, __, __, __ = self.predictFull(train)    
         margin, label, __, __, loss = self.predictFull(Dnew)
         
         accuracy = np.mean(target == label)
-        ROC_AUC = roc_auc_score(target, margin)
-        PR_AUC = average_precision_score(target, margin)
-        
+        try:
+            ROC_AUC = roc_auc_score(target, margin)
+        except:
+            ROC_AUC = 100
+        try:
+            PR_AUC = average_precision_score(target, margin)
+        except:
+            PR_AUC = 100
+        # optimal tau for overall F1 score
+        tau = optimalTau(np.squeeze(Ftr), (train.iloc[:,-1].values))
+        # overall F1 score
+        y_pred = (np.squeeze(margin) >= tau)*1
+        F1_score = f1_score(target, y_pred)
         return pd.DataFrame({'loss': loss,
                              'accuracy': accuracy,
                              'ROC_AUC': ROC_AUC,
-                             'PR_AUC': PR_AUC}, index=[0])
+                             'PR_AUC': PR_AUC,
+                             'F1_score':F1_score}, index=[0])
    
 
     
@@ -458,3 +475,4 @@ class binaryCadreModel(object):
                 scores['ROC_AUC'].append(accuracy_score(temp_m['y'], np.rint(temp_m['f'])))    
             scores['PR_AUC'].append(average_precision_score(temp_m['y'], temp_m['f']))
         return pd.DataFrame(scores)[['m', 'size', 'proportion', 'accuracy', 'ROC_AUC', 'PR_AUC']]
+
