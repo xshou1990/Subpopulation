@@ -39,7 +39,7 @@ def plotclustmap(means,variance,featureslice,clustpop,normtype):
     # map 3 levels
     cmap = mpl.colors.LinearSegmentedColormap.from_list("", ["blue","#fed0fc","red"])
     if normtype == None:
-        cg = sns.clustermap(means,yticklabels = featureslice, xticklabels = np.arange(means.shape[0]),standard_scale=None,col_cluster=False,cbar_kws={"ticks":[-1,0,1]}, figsize =(12,12),cmap=cmap) 
+        cg = sns.clustermap(means,yticklabels = featureslice, xticklabels = np.arange(means.shape[1]),standard_scale=None,col_cluster=False,cbar_kws={"ticks":[-1,0,1]}, figsize =(12,12),cmap=cmap) 
         #plt.setp(cg.ax_heatmap.xaxis.get_majorticklabels(), rotation=45)
         cg.ax_row_dendrogram.set_visible(False)
         cg.cax.set_visible(False)
