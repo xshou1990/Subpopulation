@@ -28,7 +28,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import  SGDClassifier
 from sklearn.model_selection import GridSearchCV
-from  scipy.stats import multivariate_normal
+#from  scipy.stats import multivariate_normal
 from sklearn.cluster import KMeans
 #from cvxopt import matrix
 #from cvxopt.solvers import qp
@@ -45,7 +45,7 @@ class SupervisedBMM():
     
     
     def __init__(self, max_iter = 1000, cv = 10, mix = 0.2, 
-                 C = [20,50,200,500,2000,5000], 
+                 C = [2000,5000,10000,20000,50000,100000,200000], 
                  alpha = [ 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000 ],
                  max_iter2 = 10, penalty = 'l1', scoring = 'neg_log_loss',
                  solver = 'saga', n_clusters = 2, tol = 10**(-3 ) , 
@@ -938,11 +938,11 @@ class SupervisedBMM():
         #mixing coefficient
         pk = Nk/N  
         #print("Minimum of memb {} max{}".format(np.min( memb), np.max( memb)))
-        meank = np.sum( ( X.T * memb ).T, axis = 0) / Nk +10**(-6)
+        meank = np.sum( ( X.T * memb ).T, axis = 0) / Nk 
        
-        meankOne = 1-meank  + 10**(-6)
-        meanklog = np.log(meank)
-        meankOnelog = np.log(meankOne)
+        meankOne = 1-meank  
+        meanklog = np.log(meank + 10**(-9) )
+        meankOnelog = np.log(meankOne + 10**(-9))
         
         #full covarinace
         logProbTerm1 = np.sum( X * meanklog, axis = 1 )
@@ -985,13 +985,13 @@ class SupervisedBMM():
         meanB = np.zeros( [X.shape[1], nclusters] )
         for i in range( len(self.params['means']) ):
             meanB[:,i] = self.params['means'][i] 
-        regk = 10**(-5)/nclusters
-        meanBOne = 1 - meanB + regk
-        meanBlog = np.log( meanB + regk )
-        meanBOnelog = np.log( meanBOne )
+        #regk = 10**(-5)/nclusters
+        meanBOne = 1 - meanB # + regk
+        meanBlog = np.log ( meanB + 10**(-9) ) #( meanB + regk )
+        meanBOnelog = np.log( meanBOne + 10**(-9) )
 
         
-        membership = np.zeros( [X.shape[0], nclusters] )
+        #membership = np.zeros( [X.shape[0], nclusters] )
         logmembership = np.zeros( [X.shape[0], nclusters] )
         for i in np.arange( nclusters ):
             
@@ -1003,7 +1003,7 @@ class SupervisedBMM():
             
         maxlog = np.max( logmembership, axis = 1)
         logmembership = (logmembership.T - maxlog).T
-        probMat = np.exp( logmembership )* np.array( mixes ) + regk
+        probMat = np.exp( logmembership )* np.array( mixes ) + 10**(-9) # + regk
         sumRel = np.sum( probMat, axis = 1)
         membership = (probMat.T / sumRel).T 
        
