@@ -468,59 +468,6 @@ def sgmmResults( model, probTest, probTrain, ytest, ytrain, tau = None,
         
     return results
     
-
-def sbmmResults( model, probTest, probTrain, ytest, ytrain, tau = None,
-                mode = 3, Xtest = None):
-    #a Summary of predictions and interesting model parameters
-    #mixing coef
-    pis = model.pis
-    #means
-    means = model.means
-    #weights
-    weights = model.weights
-    #logistic regressions
-    logRegr = model.LogRegr
-    #train memberships
-    if Xtest is None:
-        mTest = model.mTest
-    else:
-        mTest = model.predict_BMMS(Xtest)
-    #test memberships
-    mTrain = model.mTrain
-        
-    #CALCULATE THE OPTIMAL TAU
-    if tau is None:
-        tau = optimalTau(probTrain, ytrain, mode = mode)
-    
-    metTest,_ = calc_metrics(custom_prob = probTest.copy(), tau = tau, 
-                                                                     y = ytest)
-    metTrain ,_= calc_metrics(custom_prob = probTrain.copy(), tau = tau,
-                                                                     y = ytrain)
-    
-    predictTrain = predict_y( probTrain.copy(), tau )
-    predictTest = predict_y( probTest.copy(), tau )
-    
-    columns = ['cluster', 'size', 'high_cost%','low_cost%', 
-                       'TP', 'TN', 'FP', 'FN', 
-                       'FPR', 'specificity', 'sensitivity', 'precision',
-                       'accuracy', 'balanced accuracy', 'f1', 'auc']
-
-    metTestSBMM = pd.DataFrame( [metTest], columns = columns)
-    metTrainSBMM = pd.DataFrame( [metTrain], columns = columns)
-    
-    Ntrain = ytrain.shape[0]
-    Npos = len( np.where( ytrain == 1)[0])
-    Nneg = Ntrain - Npos
-    posPerc = Npos/Ntrain
-    negPerc = Nneg/Ntrain
-    
-    results = {"testMet": metTestSBMM, "trainMet": metTrainSBMM,
-               "yTest": predictTest, "yTrain": predictTrain, "memberTr":
-                   mTrain, "memberTest": mTest, "means": means, "weights":
-                       weights, "tau": tau, 'pis': pis, "posP": posPerc,
-                           "negP": negPerc}
-        
-    return results    
     
     
         

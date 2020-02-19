@@ -558,7 +558,7 @@ class SupervisedGMM():
             
             else: #KMEANS INITIALIZATION
                 
-                km = KMeans( n_clusters = n_clusters, random_state = 0)
+                km = KMeans( n_clusters = n_clusters )
                 
                 if simple == 0:
                     rdm.seed(0)

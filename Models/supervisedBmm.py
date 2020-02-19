@@ -45,7 +45,7 @@ class SupervisedBMM():
     
     
     def __init__(self, max_iter = 1000, cv = 10, mix = 0.2, 
-                 C = [2000,5000,10000,20000,50000,100000,200000], 
+                 C = [1000,2000,5000,10000,20000,50000,100000], 
                  alpha = [ 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000 ],
                  max_iter2 = 10, penalty = 'l1', scoring = 'neg_log_loss',
                  solver = 'saga', n_clusters = 2, tol = 10**(-3 ) , 
@@ -289,7 +289,7 @@ class SupervisedBMM():
             
             else: #KMEANS INITIALIZATION
                 
-                km = KMeans( n_clusters = n_clusters, random_state = 0)
+                km = KMeans( n_clusters = n_clusters )
                 
                 if simple == 0:
                     rdm.seed(0)

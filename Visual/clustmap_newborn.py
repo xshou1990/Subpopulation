@@ -14,12 +14,12 @@ def plotclustmap(means,variance,featureslice,clustpop,normtype):
     # 2 : 1- max (list of pvals), this means a given feature of a cluster has to differ from all of the rest of clusters;
     # 3 : 1- average (list of pvals), this means on average a given feature of a cluster has to differ from all of the rest of clusters;
     # clustpop : sample size for each clusters ,should be 1d array (dimension match the number of columns for means and variance)
-    clustname = ['Non-NYC Healthy','NYC Healthy','Non-NYC Travelers','HV+LI+CNY Mild ','NYC Mild','NYC Low BW','Severe']
+    clustname = ['Upstate Mild','Upstate Urgent','Upstate Low BW','Downstate Healthy','Low BW ER','Sick Travelers I','Sick Travelers II']
     #clustname = np.arange(10)
     cmap = mpl.colors.LinearSegmentedColormap.from_list("", ["blue","gainsboro","red"])
     if normtype == None:
-        cg = sns.clustermap(means,yticklabels = featureslice, xticklabels = clustname,standard_scale=None,col_cluster=False, figsize =(12,14),cmap=cmap) 
-        plt.setp(cg.ax_heatmap.xaxis.get_majorticklabels(), rotation=60)
+        cg = sns.clustermap(means,yticklabels = featureslice, xticklabels = clustname,standard_scale=None,col_cluster=False, figsize =(14,14),cmap=cmap) 
+        plt.setp(cg.ax_heatmap.xaxis.get_majorticklabels(), rotation=30)
         cg.ax_row_dendrogram.set_visible(False)
         cg.cax.set_visible(False)
         
@@ -84,4 +84,4 @@ def plotclustmap(means,variance,featureslice,clustpop,normtype):
         sns.clustermap(means,yticklabels = featureslice, xticklabels = clustname,standard_scale=0,col_cluster=False)
         sns.clustermap(means,yticklabels = featureslice, xticklabels = clustname,standard_scale=1,col_cluster=False)
         
-    return cg
+    return 
