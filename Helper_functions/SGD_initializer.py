@@ -28,18 +28,22 @@ def SGD_init(train_data = None, n_clusters = None, percent_sample = None):
     train_sample = train_data.sample(frac = percent_sample, random_state=1512)
 
     Xtrain, ytrain = train_sample.iloc[:,:-1].values, train_sample.iloc[:,-1].values
-
+    
+    # Estimator coefficient from logistic gression
     logimodel = LogisticRegression(penalty='l1', solver='liblinear', C = 1000).fit(Xtrain, ytrain)
 
+    # Sample mean/cluster center from kmeans
     kmeans = KMeans(n_clusters = n_clusters, random_state = 1512).fit( Xtrain )
-
     Centers = kmeans.cluster_centers_ #* ((kmeans.cluster_centers_ > 0)*1.0)
 
+    # W is the logistic regression weights, perturbed
     W = np.tile(logimodel.coef_.T, [1,n_clusters]) + np.random.normal(loc=0., scale=0.1, size=(Xtrain.shape[1],n_clusters))
-
+    # w0 is the logistic regression bias, perturbed
     w0 =  np.tile(logimodel.intercept_, [1,n_clusters])  + np.random.normal(loc=0., scale=0.1, size=(n_clusters,)) 
-
-    Beta = 1/ (Xtrain.shape[0]-1)* np.sum(np.square( Xtrain - Centers[:,np.newaxis] ),axis=1) +  np.random.normal(loc=0., scale=0.1, size=(n_clusters,Xtrain.shape[1]))
+    # perturbed sample variance 
+    Noisy_Var = 1/ (d_newborn_tr.shape[0]-1)* np.sum(np.square( d_newborn_tr.iloc[:,:-1].values - Centers[:,np.newaxis] ),axis=1) +  np.random.normal(loc=0., scale=0.01, size=(n_clusters,d_newborn_tr.shape[1]-1))
+    # Beta is log of diagonal scale  
+    Beta = np.log(np.sqrt(np.maximum(Noisy_Var, 0.000001)))
 
     inits = {'Mu':np.transpose(Centers),'W': W,'w0':w0, 'Beta':Beta.T }
     
