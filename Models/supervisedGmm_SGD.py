@@ -26,8 +26,8 @@ import tensorflow_probability as tfp
 
 class supervisedGmm_SGD(object):
     
-    def __init__(self, M=2, lambda_W=0.001,alpha_W=0.99, Tmax=10000, record=100, 
-                 eta=2e-3, Nba=128, eps=1e-2, termination_metric='loss'):
+    def __init__(self, M=2, lambda_W=0.0001,alpha_W=0.95, Tmax=10000, record=100, 
+                 eta=2e-3, Nba=64, eps=1e-2, termination_metric='loss'):
         ## hyperparameters / structure
         self.M = M                # number of cadres
         self.lambda_W = lambda_W  # regularization strength  
@@ -98,7 +98,7 @@ class supervisedGmm_SGD(object):
         ############################################
         ## tensorflow parameters and placeholders ##
         ############################################
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph
         
         # cadre weights/ mixing proportions
         if inits is not None and 'gamma' in inits:
@@ -140,14 +140,14 @@ class supervisedGmm_SGD(object):
             Beta = tf.Variable(np.random.normal(loc= 0, scale= 1, size=(Pcadre,self.M)), 
                             dtype=tf.float32, name='Beta')
 
-            
-        Xcadre = tf.placeholder(dtype=tf.float32, shape=(None,Pcadre), name='Xcadre')
+   
+        Xcadre = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,Pcadre), name='Xcadre')
         rep_Xcadre = tf.keras.backend.repeat_elements(Xcadre, self.M, axis=0) 
-        Xpredict = tf.placeholder(dtype=tf.float32, shape=(None,Ppredict), name='Xpredict')
-        Y = tf.placeholder(dtype=tf.float32, shape=(None,1), name='Y')
+        Xpredict = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,Ppredict), name='Xpredict')
+        Y = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,1), name='Y')
         rep_Y = tf.keras.backend.repeat_elements(Y, self.M, axis=1)
-        eta = tf.placeholder(dtype=tf.float32, shape=(), name='eta')
-        lambda_Ws = tf.placeholder(dtype=tf.float32, shape=(self.M,), name='lambda_Ws')
+        eta = tf.compat.v1.placeholder(dtype=tf.float32, shape=(), name='eta')
+        lambda_Ws = tf.compat.v1.placeholder(dtype=tf.float32, shape=(self.M,), name='lambda_Ws')
         
 ###################### Membership ########################################   
         pi =  tf.divide(tf.exp(gamma),tf.reduce_sum(tf.exp(gamma)), name = 'pi') 
@@ -168,8 +168,8 @@ class supervisedGmm_SGD(object):
         N_ik = tf.exp( Norm_LogN_ik , name = 'N_ik')
         
         # f(x,z) = pi * N_ik
-        joint_pdf = tf.multiply(pi, N_ik, name = 'joint_pdf')  + 1e-9
-        # f(x,z) --> normalized pmf
+        joint_pdf = tf.multiply(pi, N_ik, name = 'joint_pdf')
+        # f(z|x) --> normalized posterior
         Mem_pmf = tf.divide(joint_pdf, tf.tile(tf.expand_dims(tf.reduce_sum(joint_pdf,axis = 1),axis=1), 
                                                 tf.constant([1,joint_pdf.get_shape()[1].value])),  name = 'mem_pdf') 
         # best cluster (cadre)
@@ -181,7 +181,7 @@ class supervisedGmm_SGD(object):
         # 1/(1+e^(-Z_ik))
         S_ik = tf.divide(1.0,1.0 + tf.exp(-Z_ik), name = 'S_ik')
         # log p(y_i | x_i,z_k)
-        Loglogiprob = tf.add(tf.multiply(tf.log(S_ik + 1e-9),rep_Y), tf.multiply(tf.log(1.0-S_ik + 1e-9), 1 - rep_Y), name = 'Loglogiprob')
+        Loglogiprob = tf.add(tf.multiply(tf.log(S_ik + 1e-9),rep_Y), tf.multiply(tf.math.log(1.0-S_ik + 1e-9), 1 - rep_Y), name = 'Loglogiprob')
                  
 ###################### Objective: NLL ########################################  
         
@@ -191,16 +191,16 @@ class supervisedGmm_SGD(object):
         
         
         ## loss, full losss including l1 terms handled with proximal gradient
-        loss = tf.divide( - tf.reduce_sum(tf.multiply(pi, tf.add(Norm_LogN_ik,Loglogiprob))) , tf.dtypes.cast(tf.shape(Xcadre)[0], dtype = tf.float32), name ='loss')
+        loss = tf.divide( - tf.reduce_sum(tf.multiply(pi, tf.add(LogN_ik,Loglogiprob))) , tf.dtypes.cast(tf.shape(Xcadre)[0], dtype = tf.float32), name ='loss')
         loss_opt = loss + l2_W
         loss_full = loss_opt + l1_W
-        optimizer = tf.train.AdamOptimizer(learning_rate=eta).minimize(loss_opt)
+        optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=eta).minimize(loss_opt)
         
         ## projection Mu to positive orthant 
-        proj_Mu = tf.assign(Mu, tf.maximum(Mu, 0) )
+        proj_Mu = tf.compat.v1.assign(Mu, tf.maximum(Mu, 0) )
         
         ## nonsmooth proximal terms 
-        thresh_W = tf.assign(W, tf.sign(W) * (tf.abs(W) - eta * self.lambda_W * lambda_Ws * self.alpha_W) * tf.cast(tf.abs(W) > eta * self.lambda_W * self.alpha_W, tf.float32))
+        thresh_W = tf.compat.v1.assign(W, tf.sign(W) * (tf.abs(W) - eta * self.lambda_W * lambda_Ws * self.alpha_W) * tf.cast(tf.abs(W) > eta * self.lambda_W * self.alpha_W, tf.float32))
         
         ####################
         ## learning model ##
@@ -314,18 +314,18 @@ class supervisedGmm_SGD(object):
         """Returns classification scores/margins,cadre membership scores, predicted cadres """
         if not self.fitted: print('warning: model not yet fit')
         
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
         gamma  = tf.Variable(self.gamma, dtype=tf.float32, name='gamma')
         Mu  = tf.Variable(self.Mu, dtype=tf.float32, name='Mu')
         Beta  = tf.Variable(self.Beta, dtype=tf.float32, name='Beta')
         W  = tf.Variable(self.W, dtype=tf.float32, name='W')
         w0 = tf.Variable(self.w0, dtype=tf.float32, name='w0')
         
-        Xcadre = tf.placeholder(dtype=tf.float32, shape=(None,self.cadreFts.shape[0]), name='Xcadre')
-        Xpredict = tf.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict')        
+        Xcadre = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,self.cadreFts.shape[0]), name='Xcadre')
+        Xpredict = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict')        
         rep_Xcadre = tf.keras.backend.repeat_elements(Xcadre, self.M, axis=0) 
         
-        # preparing parameters 
+        # preparing parameters for evaluation
         pi =  tf.divide(tf.exp(gamma),tf.reduce_sum(tf.exp(gamma)), name = 'pi') 
         
         mvn = tfp.distributions.MultivariateNormalDiag(loc= tf.tile(tf.transpose(Mu),[tf.shape(Xcadre)[0],1]),
@@ -340,7 +340,7 @@ class supervisedGmm_SGD(object):
         
         N_ik = tf.exp( Norm_LogN_ik , name = 'N_ik')
         
-        joint_pdf = tf.multiply(pi, N_ik, name = 'joint_pdf')  + 1e-9
+        joint_pdf = tf.multiply(pi, N_ik, name = 'joint_pdf')  
         
         Mem_pmf = tf.divide(joint_pdf, tf.tile(tf.expand_dims(tf.reduce_sum(joint_pdf,axis = 1),axis=1), 
                                                 tf.constant([1,joint_pdf.get_shape()[1].value])),  name = 'mem_pdf') 
@@ -364,14 +364,16 @@ class supervisedGmm_SGD(object):
         return F, Mem_pmf, hard_m
     
     def predictClust(self, Mem_pmf, Dnew):
+        """Returns classification scores for each cadre (hard cluster) """
          
         if not self.fitted: print('warning: model not yet fit')
         
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
+        
         W  = tf.Variable(self.W, dtype=tf.float32, name='W')
         w0 = tf.Variable(self.w0, dtype=tf.float32, name='w0')
         
-        Xpredict = tf.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict') 
+        Xpredict = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict') 
         
         Z_ik = tf.add(tf.matmul(Xpredict, W), w0, name='Z_ik')
         S_ik = tf.divide(1.0,1.0 + tf.exp(-Z_ik), name = 'S_ik')
