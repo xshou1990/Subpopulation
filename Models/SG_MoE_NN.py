@@ -159,15 +159,15 @@ class binaryCadreModel(object):
         ## cadre-wise prediction scores
         E = tf.add(tf.matmul(Xpredict, W), W0, name='E')
         ## component P(y=1 | x, m =k)
-        Z = tf.divide(1.0,1.0 + tf.exp(-E), name = 'Z')
+        Z = tf.sigmoid(E, name = 'Z')
         ## probability P(y=1|x)
         F = tf.reduce_sum(softk * Z, name='F', axis=1, keepdims=True)
         ## hard membership
         bstCd = tf.argmax(softk, axis=1, name='bestCadre')
         
-        ## cross entropy loss
-        #loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=F)
-        loss = -tf.reduce_mean(tf.multiply(Y, tf.log(F)) + tf.multiply(1-Y,tf.log(1.0-F)),name = 'loss')
+        ## cross entropy loss 
+        loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=tf.log(F+1e-6/(1-F+1e-6))),name ='loss')
+        #loss = -tf.reduce_mean(tf.multiply(Y, tf.log(F)) + tf.multiply(1-Y,tf.log(1.0-F)),name = 'loss')
         
         ## regularization
         l2_W = self.lambda_W * (1 - self.alpha_W) * tf.reduce_sum(lambda_Ws * W**2)
@@ -238,6 +238,7 @@ class binaryCadreModel(object):
                                                             Xpredict: dataPredict,
                                                             lambda_Ws: cadre_counts,
                                                             Y: dataTarget})
+
                     
                     self.metrics['training']['loss'].append(l)
 
@@ -248,7 +249,7 @@ class binaryCadreModel(object):
                         for m in range(self.M):
                             cadre_counts[m] = np.sum(cadres == m) + 1
                         cadre_counts = cadre_counts / cadre_counts.sum()
-                        l = sess.run([loss_full], feed_dict={Xcadre: dataCadreVa,
+                        l = sess.run([loss], feed_dict={Xcadre: dataCadreVa,
                                                                         Xpredict: dataPredictVa,
                                                                         lambda_Ws: cadre_counts,
                                                                         Y: dataTargetVa})
@@ -259,14 +260,14 @@ class binaryCadreModel(object):
                             last_metric = self.metrics['validation'][self.termination_metric][-1]
                             second_last_metric = self.metrics['validation'][self.termination_metric][-2]
 
-                            if abs(last_metric[0] - second_last_metric[0])/last_metric[0] < self.eps:
+                            if abs(last_metric[0] - second_last_metric[0]) < self.eps:
                                 self.termination_reason = 'lack of sufficient decrease in validation ' + self.termination_metric
                                 break
                     else:
                         if len(self.time) > 1:
                             last_metric = self.metrics['training'][self.termination_metric][-1]
                             second_last_metric = self.metrics['training'][self.termination_metric][-2]
-                            if abs(last_metric[0] - second_last_metric[0])/last_metric[0] < self.eps:
+                            if abs(last_metric[0] - second_last_metric[0]) < self.eps:
                                 self.termination_reason = 'lack of sufficient decrease in training ' + self.termination_metric
                                 break
                                        
@@ -313,7 +314,7 @@ class binaryCadreModel(object):
                                                 tf.constant([1,softmax.get_shape()[1].value])))
         ## cadre-wise prediction scores
         E = tf.add(tf.matmul(Xpredict, W), W0, name='E')
-        Z = tf.divide(1.0,1.0 + tf.exp(-E), name = 'Z')
+        Z = tf.sigmoid(E, name = 'Z')
         ## prob(y=1|x)
         #F = tf.reduce_sum(softmax * Z, name='F', axis=1, keepdims=True)
         F = tf.reduce_sum(softk * Z, name='F', axis=1, keepdims=True)
@@ -342,7 +343,7 @@ class binaryCadreModel(object):
         Xpredict = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict') 
         
         E = tf.add(tf.matmul(Xpredict, W), W0, name='E')
-        Z = tf.divide(1.0,1.0 + tf.exp(-E), name = 'Z')
+        Z = tf.sigmoid(E, name = 'Z')
         
         mem_max = tf.constant((Membership == Membership.max(axis=1)[:,None]), dtype =tf.float32, name = 'mem_max')
         
