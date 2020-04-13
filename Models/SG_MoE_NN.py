@@ -115,7 +115,7 @@ class binaryCadreModel(object):
         if inits is not None and 'Theta' in inits:
             Theta = tf.Variable(inits['Theta'], dtype=tf.float32, name='Theta')
         else:
-            Theta = tf.Variable(np.random.normal(loc=0., scale=1, size=(Ppredict,self.M)), 
+            Theta = tf.Variable(np.random.normal(loc=0., scale=0.1, size=(Ppredict,self.M)), 
                             dtype=tf.float32, name='Theta')
         
         if inits is not None and 'Theta0' in inits:
@@ -127,7 +127,7 @@ class binaryCadreModel(object):
         if inits is not None and 'W' in inits:
             W = tf.Variable(inits['W'], dtype=tf.float32, name='W')
         else:
-            W = tf.Variable(np.random.normal(loc=0., scale=1, size=(Ppredict,self.M)), 
+            W = tf.Variable(np.random.normal(loc=0., scale=0.1, size=(Ppredict,self.M)), 
                             dtype=tf.float32, name='W')
         ## regression hyperplane bias parameter
         if inits is not None and 'W0' in inits:
@@ -165,17 +165,17 @@ class binaryCadreModel(object):
         ## hard membership
         bstCd = tf.argmax(softk, axis=1, name='bestCadre')
         
-        ## cross entropy loss 
+        ## cross entropy loss
         loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=Y, logits=tf.log(F+1e-6/(1-F+1e-6))),name ='loss')
         #loss = -tf.reduce_mean(tf.multiply(Y, tf.log(F)) + tf.multiply(1-Y,tf.log(1.0-F)),name = 'loss')
         
         ## regularization
         l2_W = self.lambda_W * (1 - self.alpha_W) * tf.reduce_sum(lambda_Ws * W**2)
         l1_W = self.lambda_W * self.alpha_W * tf.reduce_sum(lambda_Ws * tf.abs(W))
-        l2_Theta = self.lambda_Theta *  tf.reduce_sum(W**2)
+        l2_Theta = self.lambda_Theta *  tf.reduce_sum(Theta**2)
         
         ## loss that is fed into optimizer
-        loss_opt = loss + l2_W + l2_Theta 
+        loss_opt = loss + l2_W  + l2_Theta 
         optimizer = tf.train.AdamOptimizer(learning_rate=eta).minimize(loss_opt)   
         
         ## full loss, including l1 terms handled with proximal gradient
@@ -297,7 +297,7 @@ class binaryCadreModel(object):
         W0 = tf.Variable(self.W0, dtype=tf.float32, name='W0')
         Xcadre = tf.placeholder(dtype=tf.float32, shape=(None,self.cadreFts.shape[0]), name='Xcadre')
         Xpredict = tf.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict')
-        Y = tf.placeholder(dtype=tf.float32, shape=(None,1), name='Y')
+#        Y = tf.placeholder(dtype=tf.float32, shape=(None,1), name='Y')
 
         # gating function:        
         if self.topK == 1:
@@ -326,8 +326,8 @@ class binaryCadreModel(object):
             tf.global_variables_initializer().run()
             Fnew, Mnew, Lnew = sess.run([F,softk,bstCd ], 
                                                      feed_dict={Xcadre: Dnew.loc[:,self.cadreFts].values,
-                                                                Xpredict: Dnew.loc[:,self.predictFts].values,
-                                                                Y: Dnew.loc[:,[self.targetCol]]})
+                                                                Xpredict: Dnew.loc[:,self.predictFts].values}) #,
+                                                              #  Y: Dnew.loc[:,[self.targetCol]]})
         return Fnew,Mnew,Lnew
 
     def predictClust(self, Membership, Dnew):
