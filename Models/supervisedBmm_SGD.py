@@ -167,7 +167,7 @@ class supervisedBmm_SGD(object):
         # XW+w0
         Z_ik = tf.add(tf.matmul(Xpredict, W), w0, name='Z_ik')
         # 1/(1+e^(-Z_ik))
-        S_ik = tf.divide(1.0,1.0 + tf.exp(-Z_ik), name = 'S_ik')
+        S_ik = tf.sigmoid(Z_ik, name = 'S_ik')
         # log p(y_i | x_i,z_k)
         Loglogiprob = tf.add(tf.multiply(tf.math.log(S_ik + 1e-9),rep_Y), tf.multiply(tf.math.log(1.0-S_ik + 1e-9), 1 - rep_Y), name = 'Loglogiprob')
                  
@@ -263,7 +263,7 @@ class supervisedBmm_SGD(object):
                         for m in range(self.M):
                             cadre_counts[m] = np.sum(cadres == m) + 1
                         cadre_counts = cadre_counts / cadre_counts.sum()
-                        l = sess.run([loss_full], feed_dict={Xcadre: dataCadreVa,
+                        l = sess.run([loss], feed_dict={Xcadre: dataCadreVa,
                                                                         Xpredict: dataPredictVa,
                                                                         lambda_Ws: cadre_counts,
                                                                         Y: dataTargetVa})
@@ -339,7 +339,7 @@ class supervisedBmm_SGD(object):
         
         Z_ik = tf.add(tf.matmul(Xpredict, W), w0, name='Z_ik')
         
-        S_ik = tf.divide(1.0,1.0 + tf.exp(-Z_ik), name = 'S_ik')
+        S_ik = tf.sigmoid(Z_ik, name = 'S_ik')
                                      
         ## F[n] = f_k(x^n): membership weighted logistic regression probability score
         F = tf.reduce_sum(Mem_pmf * S_ik, name='F', axis=1, keepdims=True)
@@ -368,7 +368,7 @@ class supervisedBmm_SGD(object):
         Xpredict = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None,self.predictFts.shape[0]), name='Xpredict') 
         
         Z_ik = tf.add(tf.matmul(Xpredict, W), w0, name='Z_ik')
-        S_ik = tf.divide(1.0,1.0 + tf.exp(-Z_ik), name = 'S_ik')
+        S_ik = tf.sigmoid(Z_ik, name = 'S_ik')
         
         mem_max = tf.constant((Mem_pmf == Mem_pmf.max(axis=1)[:,None]), dtype =tf.float32, name = 'mem_max')
         
